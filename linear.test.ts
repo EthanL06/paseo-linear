@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, it } from "node:test";
+import { mkdtemp, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createIssueHandlers } from "./server/issues";
+import { createFileKeyStore, defaultKeyPath } from "./server/key-store";
 import { createLinearIssueSearch } from "./server/linear";
 
 function makeIssue(identifier: string, title: string, assignee: string | null = "Mohamed") {
@@ -167,16 +171,27 @@ describe("Linear issue search", () => {
 });
 
 describe("API key resolution", () => {
-  function fakeSettings(apiKey: string) {
+  function memoryStore(initial = "") {
+    let value = initial;
     return {
-      read: async () => ({ status: "ready" as const, revision: "1", values: { apiKey } }),
-      subscribe: () => () => {},
+      read: async () => value,
+      write: async (apiKey: string) => {
+        value = apiKey;
+      },
+      remove: async () => {
+        value = "";
+      },
+      get value() {
+        return value;
+      },
     };
   }
 
-  function recordKeys(keys: string[]) {
+  function recordKeys(keys: string[], accepted: (key: string) => boolean = () => true) {
     return (async (_url: string, init?: { headers?: Record<string, string> }) => {
-      keys.push(init?.headers?.Authorization ?? "");
+      const key = init?.headers?.Authorization ?? "";
+      keys.push(key);
+      if (!accepted(key)) return new Response("", { status: 401 });
       return new Response(JSON.stringify({ data: { viewer: { name: "Alex", email: "alex@example.com" } } }));
     }) as unknown as typeof fetch;
   }
@@ -184,7 +199,7 @@ describe("API key resolution", () => {
   it("prefers the saved key over LINEAR_API_KEY", async () => {
     const keys: string[] = [];
     const handlers = createIssueHandlers({
-      settings: fakeSettings("lin_api_saved"),
+      keyStore: memoryStore("lin_api_saved"),
       env: { LINEAR_API_KEY: "lin_api_env" },
       request: recordKeys(keys),
     });
@@ -199,28 +214,65 @@ describe("API key resolution", () => {
 
   it("falls back to LINEAR_API_KEY", async () => {
     const keys: string[] = [];
-    const handlers = createIssueHandlers({
-      settings: fakeSettings(""),
-      env: { LINEAR_API_KEY: " lin_api_env " },
-      request: recordKeys(keys),
-    });
+    const handlers = createIssueHandlers({ keyStore: memoryStore(), env: { LINEAR_API_KEY: " lin_api_env " }, request: recordKeys(keys) });
     const status = await handlers.connectionStatus();
     assert.equal(status.status === "connected" && status.source, "environment");
     assert.deepEqual(keys, ["lin_api_env"]);
   });
 
   it("explains how to add a key when none is set", async () => {
-    const handlers = createIssueHandlers({ settings: fakeSettings(""), env: {} });
+    const handlers = createIssueHandlers({ keyStore: memoryStore(), env: {} });
     assert.deepEqual(await handlers.connectionStatus(), { status: "missing" });
     await assert.rejects(handlers.searchIssues({ query: "" }), /Settings, Plugins, Linear/);
   });
 
-  it("checks a typed key without saving it", async () => {
-    const keys: string[] = [];
-    const handlers = createIssueHandlers({ settings: fakeSettings(""), env: {}, request: recordKeys(keys) });
-    const status = await handlers.checkApiKey({ apiKey: " lin_api_typed " });
-    assert.equal(status.status, "connected");
-    assert.deepEqual(keys, ["lin_api_typed"]);
-    assert.deepEqual(await handlers.checkApiKey({ apiKey: "  " }), { status: "missing" });
+  it("saves a key only after Linear accepts it", async () => {
+    const store = memoryStore();
+    const handlers = createIssueHandlers({ keyStore: store, env: {}, request: recordKeys([], (key) => key === "lin_api_good") });
+
+    const rejected = await handlers.saveApiKey({ apiKey: "lin_api_bad" });
+    assert.equal(rejected.status, "error");
+    assert.equal(store.value, "");
+
+    const accepted = await handlers.saveApiKey({ apiKey: " lin_api_good " });
+    assert.equal(accepted.status, "connected");
+    assert.equal(store.value, "lin_api_good");
+  });
+
+  it("never returns the key in any status", async () => {
+    const handlers = createIssueHandlers({ keyStore: memoryStore("lin_api_secret"), env: {}, request: recordKeys([]) });
+    const results = [await handlers.connectionStatus(), await handlers.saveApiKey({ apiKey: "lin_api_secret" })];
+    for (const result of results) assert.ok(!JSON.stringify(result).includes("lin_api_secret"));
+  });
+
+  it("removes the saved key and falls back to LINEAR_API_KEY", async () => {
+    const store = memoryStore("lin_api_saved");
+    const handlers = createIssueHandlers({ keyStore: store, env: { LINEAR_API_KEY: "lin_api_env" }, request: recordKeys([]) });
+    const status = await handlers.removeApiKey();
+    assert.equal(store.value, "");
+    assert.equal(status.status === "connected" && status.source, "environment");
+  });
+});
+
+describe("file key store", () => {
+  it("writes the key to an owner-only file and removes it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "paseo-linear-"));
+    try {
+      const path = join(dir, "plugin-data", "linear", "api-key");
+      const store = createFileKeyStore(path);
+      assert.equal(await store.read(), "");
+      await store.write("lin_api_test");
+      assert.equal(await store.read(), "lin_api_test");
+      assert.equal((await stat(path)).mode & 0o777, 0o600);
+      assert.equal((await stat(join(dir, "plugin-data", "linear"))).mode & 0o777, 0o700);
+      await store.remove();
+      assert.equal(await store.read(), "");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses PASEO_HOME for the key path", () => {
+    assert.equal(defaultKeyPath({ PASEO_HOME: "/srv/paseo" }), "/srv/paseo/plugin-data/linear/api-key");
   });
 });

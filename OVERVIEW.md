@@ -9,13 +9,14 @@ Search uses the same rules in both places. Type an identifier such as `ENG-1234`
 
 ## Setup
 
-The plugin needs a Linear personal API key. Create one in Linear under Settings > Security & access > Personal API keys. Then open Paseo's Settings > Plugins, choose Connection in the Linear plugin's menu, and paste the key. The plugin checks the key with Linear as you type and saves it when it works. The screen shows which Linear account is connected.
+The plugin needs a Linear personal API key. Create one in Linear under Settings > Security & access > Personal API keys. Then open Paseo's Settings > Plugins, choose Connection in the Linear plugin's menu, and paste the key. The plugin checks the key with Linear as you type and saves it when Linear accepts it. The screen then shows which Linear account is connected, and a Remove button deletes the saved key.
 
 You can set `LINEAR_API_KEY` in the Paseo daemon's environment instead. A key saved in Settings takes precedence. Requires Paseo 0.11.4 or later.
 
 ## Data and permissions
 
-- The API key is stored in the plugin's settings on the Paseo host, or read from `LINEAR_API_KEY` there. The host sends all requests directly to `api.linear.app`. Apps connected to the same host can read the saved key through the settings screen.
+- A key you paste is saved on the Paseo host in `$PASEO_HOME/plugin-data/linear/api-key` (by default under `~/.paseo`), readable only by the user that runs the daemon. Apps connected to the host never receive it back; they only see which Linear account is connected. Without a saved key, the plugin uses `LINEAR_API_KEY` from the host environment.
+- The host sends requests only to `api.linear.app`, and only after a key is set.
 - The plugin only reads from Linear. It never creates or changes issues or comments.
 - The issue text you send becomes part of the agent's prompt, so the agent provider receives it.
 - Search results are kept only in the app's memory, at most 50 searches, until Paseo restarts.

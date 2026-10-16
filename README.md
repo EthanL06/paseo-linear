@@ -26,7 +26,7 @@ Requires Paseo 0.11.4 or later.
 
 ## Data
 
-The API key is stored in the plugin's settings on the Paseo host (or read from `LINEAR_API_KEY` there). The host sends requests only to `https://api.linear.app/graphql` and only reads data. The issue text you send goes to the agent, and so to its provider. The app keeps recent search results in memory until Paseo restarts.
+A pasted key is saved on the Paseo host in `$PASEO_HOME/plugin-data/linear/api-key` with owner-only permissions (folder 0700, file 0600), and connected apps never receive it back. Without a saved key, the plugin reads `LINEAR_API_KEY` from the daemon environment. The host sends requests only to `https://api.linear.app/graphql` and only reads data. The issue text you send goes to the agent, and so to its provider. The app keeps recent search results in memory until Paseo restarts.
 
 ## Development
 

@@ -1,14 +1,13 @@
 import type { PluginAttachmentSearchPayload, RpcInput } from "@getpaseo/plugin";
-import type { PluginSettings } from "@getpaseo/plugin/server";
+import type { ConnectionStatus, saveApiKeyRpc } from "../shared/connection";
 import type { searchIssuesRpc } from "../shared/issues";
-import type { ConnectionStatus, checkApiKeyRpc, connectionSettings } from "../shared/settings";
+import type { KeyStore } from "./key-store";
 import { MISSING_API_KEY_MESSAGE, createLinearIssueSearch, type LinearIssueSearch } from "./linear";
 
-type ConnectionSettings = PluginSettings<typeof connectionSettings.schema>;
 type KeySource = "settings" | "environment";
 
 interface IssueHandlerOptions {
-  settings: ConnectionSettings;
+  keyStore: KeyStore;
   env?: NodeJS.ProcessEnv;
   request?: typeof fetch;
 }
@@ -21,19 +20,18 @@ async function describeConnection(client: LinearIssueSearch, source: KeySource):
   }
 }
 
-export function createIssueHandlers({ settings, env = process.env, request }: IssueHandlerOptions) {
-  async function resolveApiKey(): Promise<{ apiKey: string; source: KeySource } | null> {
-    const state = await settings.read();
-    const saved = state.status === "ready" ? state.values.apiKey : "";
-    if (saved) return { apiKey: saved, source: "settings" };
+export function createIssueHandlers({ keyStore, env = process.env, request }: IssueHandlerOptions) {
+  async function linear(): Promise<{ client: LinearIssueSearch; source: KeySource } | null> {
+    const saved = await keyStore.read();
     const fromEnv = env.LINEAR_API_KEY?.trim() ?? "";
-    return fromEnv ? { apiKey: fromEnv, source: "environment" } : null;
+    const apiKey = saved || fromEnv;
+    if (!apiKey) return null;
+    return { client: createLinearIssueSearch({ apiKey, request }), source: saved ? "settings" : "environment" };
   }
 
-  async function linear(): Promise<{ client: LinearIssueSearch; source: KeySource } | null> {
-    const key = await resolveApiKey();
-    if (!key) return null;
-    return { client: createLinearIssueSearch({ apiKey: key.apiKey, request }), source: key.source };
+  async function connectionStatus(): Promise<ConnectionStatus> {
+    const connection = await linear();
+    return connection ? describeConnection(connection.client, connection.source) : { status: "missing" };
   }
 
   return {
@@ -43,15 +41,19 @@ export function createIssueHandlers({ settings, env = process.env, request }: Is
       return connection.client.search(query);
     },
 
-    async connectionStatus(): Promise<ConnectionStatus> {
-      const connection = await linear();
-      return connection ? describeConnection(connection.client, connection.source) : { status: "missing" };
+    connectionStatus,
+
+    async saveApiKey({ apiKey }: RpcInput<typeof saveApiKeyRpc>): Promise<ConnectionStatus> {
+      const trimmed = apiKey.trim();
+      if (!trimmed) return connectionStatus();
+      const status = await describeConnection(createLinearIssueSearch({ apiKey: trimmed, request }), "settings");
+      if (status.status === "connected") await keyStore.write(trimmed);
+      return status;
     },
 
-    async checkApiKey({ apiKey }: RpcInput<typeof checkApiKeyRpc>): Promise<ConnectionStatus> {
-      const trimmed = apiKey.trim();
-      if (!trimmed) return { status: "missing" };
-      return describeConnection(createLinearIssueSearch({ apiKey: trimmed, request }), "settings");
+    async removeApiKey(): Promise<ConnectionStatus> {
+      await keyStore.remove();
+      return connectionStatus();
     },
   };
 }
