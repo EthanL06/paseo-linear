@@ -1,0 +1,14 @@
+{
+  "id": "linear",
+  "name": "Linear",
+  "description": "Search your Linear issues from the composer and send one to an agent as an attachment.",
+  "icon": "assets/icon.png",
+  "media": [
+    "assets/send-search.png",
+    "assets/send-preview.png",
+    "assets/settings.png"
+  ],
+  "requirements": {
+    "paseo": ">=0.11.4"
+  }
+}

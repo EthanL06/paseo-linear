@@ -1,0 +1,40 @@
+{
+  "name": "paseo-linear",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Search your Linear issues from the composer and send one to an agent as an attachment.",
+  "license": "Apache-2.0",
+  "author": "Ethan Lanting",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EthanL06/paseo-linear.git"
+  },
+  "files": [
+    "paseo-plugin.json",
+    "OVERVIEW.md",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "assets/",
+    "index.client.ts",
+    "index.server.ts",
+    "client/",
+    "server/",
+    "shared/"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test linear.test.ts"
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "0.11.4",
+    "@types/node": "^22",
+    "@types/react": "~19.2.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3"
+  }
+}

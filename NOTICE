@@ -1,0 +1,11 @@
+Linear for Paseo
+Copyright 2026 Ethan Lanting
+
+This plugin started from plugin-examples/linear in Paseo
+(https://github.com/getpaseo/paseo, tag v0.11.4), Copyright (c) 2025-present
+Mohamed Boudra, licensed under the Apache License, Version 2.0. The files from
+that example were changed.
+
+The Linear logo in client/linear-logo.tsx and assets/icon.png comes from
+Simple Icons (https://simpleicons.org), CC0 1.0. Linear is a trademark of
+its owner. This plugin is not affiliated with or endorsed by Linear.
